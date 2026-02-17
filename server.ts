@@ -4,6 +4,11 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const execAsync = promisify(exec);
 const app = express();
@@ -11,6 +16,9 @@ const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
+
+// Path to cre-orchestrator .env file
+const CRE_ENV_PATH = path.join(__dirname, '..', 'cre-orchestrator', '.env');
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -78,6 +86,68 @@ app.post('/api/simulate', async (req, res) => {
         res.json({
             success: false,
             output: output,
+        });
+    }
+});
+
+// Get environment configuration status
+app.get('/api/get-env-config', async (req, res) => {
+    try {
+        // Read .env file
+        const envContent = await fs.readFile(CRE_ENV_PATH, 'utf-8');
+        
+        // Check if CRE_ETH_PRIVATE_KEY is set and not the placeholder
+        const privateKeyMatch = envContent.match(/CRE_ETH_PRIVATE_KEY=(.+)/);
+        const hasPrivateKey = privateKeyMatch && 
+                              privateKeyMatch[1].trim() !== '' && 
+                              privateKeyMatch[1].trim() !== 'your-eth-private-key';
+
+        res.json({
+            hasPrivateKey: !!hasPrivateKey,
+        });
+    } catch (error) {
+        console.error('Error reading .env config:', error);
+        res.status(500).json({ 
+            error: 'Failed to read configuration',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+// Set environment configuration
+app.post('/api/set-env-config', async (req, res) => {
+    try {
+        const { privateKey } = req.body;
+
+        if (!privateKey) {
+            return res.status(400).json({ error: 'Private key is required' });
+        }
+
+        // Read current .env file
+        let envContent = await fs.readFile(CRE_ENV_PATH, 'utf-8');
+        
+        // Update or add CRE_ETH_PRIVATE_KEY
+        const privateKeyRegex = /CRE_ETH_PRIVATE_KEY=.*/;
+        if (privateKeyRegex.test(envContent)) {
+            // Replace existing key
+            envContent = envContent.replace(privateKeyRegex, `CRE_ETH_PRIVATE_KEY=${privateKey}`);
+        } else {
+            // Add new key
+            envContent += `\nCRE_ETH_PRIVATE_KEY=${privateKey}\n`;
+        }
+
+        // Write updated .env file
+        await fs.writeFile(CRE_ENV_PATH, envContent, 'utf-8');
+
+        res.json({ 
+            success: true, 
+            message: 'Configuration saved successfully' 
+        });
+    } catch (error) {
+        console.error('Error updating .env config:', error);
+        res.status(500).json({ 
+            error: 'Failed to save configuration',
+            message: error instanceof Error ? error.message : 'Unknown error'
         });
     }
 });

@@ -66,11 +66,13 @@ app.post('/api/simulate', async (req, res) => {
         }
 
         // Change to orchestrator directory and run simulation
-        // PowerShell uses semicolon (;) instead of && for command chaining
-        const command = `cd "${orchestratorPath}"; cre workflow simulate workflows --target=staging-settings`;
+        // Use '&&' for cross-platform command chaining
+        const command = `cd "${orchestratorPath}" && cre workflow simulate workflows --target=staging-settings`;
 
+        const isWindows = process.platform === 'win32';
+        
         const { stdout, stderr } = await execAsync(command, {
-            shell: 'powershell.exe',
+            shell: isWindows ? 'powershell.exe' : '/bin/sh',
             maxBuffer: 1024 * 1024 * 10, // 10MB buffer
             timeout: 60000, // 60 second timeout
         });

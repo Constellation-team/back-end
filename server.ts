@@ -6,19 +6,24 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import 'dotenv/config';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const execAsync = promisify(exec);
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-app.use(cors());
+app.use(cors({
+    origin: [FRONTEND_URL, 'http://localhost:5173']
+}));
 app.use(express.json());
 
 // Path to cre-orchestrator .env file
-const CRE_ENV_PATH = path.join(__dirname, '..', 'cre-orchestrator', '.env');
+const ORCHESTRATOR_PATH = process.env.ORCHESTRATOR_PATH || path.join(__dirname, '..', 'cre-orchestrator');
+const CRE_ENV_PATH = path.join(ORCHESTRATOR_PATH, '.env');
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -44,9 +49,9 @@ app.post('/api/write-file', async (req, res) => {
         res.json({ success: true, message: `File written: ${filePath}` });
     } catch (error) {
         console.error('Error writing file:', error);
-        res.status(500).json({ 
-            error: 'Failed to write file', 
-            message: error instanceof Error ? error.message : 'Unknown error' 
+        res.status(500).json({
+            error: 'Failed to write file',
+            message: error instanceof Error ? error.message : 'Unknown error'
         });
     }
 });
@@ -78,7 +83,7 @@ app.post('/api/simulate', async (req, res) => {
         });
     } catch (error) {
         console.error('Error running simulation:', error);
-        
+
         // Extract error output
         const execError = error as { stdout?: string; stderr?: string; message?: string };
         const output = (execError.stdout || '') + '\n' + (execError.stderr || '') + '\n' + (execError.message || '');
@@ -95,19 +100,19 @@ app.get('/api/get-env-config', async (req, res) => {
     try {
         // Read .env file
         const envContent = await fs.readFile(CRE_ENV_PATH, 'utf-8');
-        
+
         // Check if CRE_ETH_PRIVATE_KEY is set and not the placeholder
         const privateKeyMatch = envContent.match(/CRE_ETH_PRIVATE_KEY=(.+)/);
-        const hasPrivateKey = privateKeyMatch && 
-                              privateKeyMatch[1].trim() !== '' && 
-                              privateKeyMatch[1].trim() !== 'your-eth-private-key';
+        const hasPrivateKey = privateKeyMatch &&
+            privateKeyMatch[1].trim() !== '' &&
+            privateKeyMatch[1].trim() !== 'your-eth-private-key';
 
         res.json({
             hasPrivateKey: !!hasPrivateKey,
         });
     } catch (error) {
         console.error('Error reading .env config:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to read configuration',
             message: error instanceof Error ? error.message : 'Unknown error'
         });
@@ -125,7 +130,7 @@ app.post('/api/set-env-config', async (req, res) => {
 
         // Read current .env file
         let envContent = await fs.readFile(CRE_ENV_PATH, 'utf-8');
-        
+
         // Update or add CRE_ETH_PRIVATE_KEY
         const privateKeyRegex = /CRE_ETH_PRIVATE_KEY=.*/;
         if (privateKeyRegex.test(envContent)) {
@@ -139,13 +144,13 @@ app.post('/api/set-env-config', async (req, res) => {
         // Write updated .env file
         await fs.writeFile(CRE_ENV_PATH, envContent, 'utf-8');
 
-        res.json({ 
-            success: true, 
-            message: 'Configuration saved successfully' 
+        res.json({
+            success: true,
+            message: 'Configuration saved successfully'
         });
     } catch (error) {
         console.error('Error updating .env config:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Failed to save configuration',
             message: error instanceof Error ? error.message : 'Unknown error'
         });

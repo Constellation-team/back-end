@@ -33,11 +33,14 @@ app.get('/health', (req, res) => {
 // Write file endpoint
 app.post('/api/write-file', async (req, res) => {
     try {
-        const { path: filePath, content } = req.body;
+        const { path: relativePath, content } = req.body;
 
-        if (!filePath || content === undefined) {
+        if (!relativePath || content === undefined) {
             return res.status(400).json({ error: 'Missing path or content' });
         }
+
+        // Resolve absolute path using ORCHESTRATOR_PATH
+        const filePath = path.join(ORCHESTRATOR_PATH, relativePath);
 
         // Ensure directory exists
         const dir = path.dirname(filePath);
@@ -70,7 +73,7 @@ app.post('/api/simulate', async (req, res) => {
         const command = `cd "${orchestratorPath}" && cre workflow simulate workflows --target=staging-settings`;
 
         const isWindows = process.platform === 'win32';
-        
+
         const { stdout, stderr } = await execAsync(command, {
             shell: isWindows ? 'powershell.exe' : '/bin/sh',
             maxBuffer: 1024 * 1024 * 10, // 10MB buffer

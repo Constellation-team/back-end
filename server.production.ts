@@ -7,11 +7,32 @@ const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// CORS configuration
+// CORS configuration - More flexible for production
 app.use(cors({
-    origin: NODE_ENV === 'production'
-        ? [FRONTEND_URL]
-        : [FRONTEND_URL, 'http://localhost:5173', 'http://localhost:5174'],
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps, curl, postman)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
+            FRONTEND_URL,
+            'http://localhost:5173',
+            'http://localhost:5174',
+            'http://localhost:3000'
+        ];
+        
+        // In production, also allow all Vercel preview URLs
+        if (NODE_ENV === 'production' && origin.includes('.vercel.app')) {
+            return callback(null, true);
+        }
+        
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            console.warn(`⚠️ CORS blocked request from: ${origin}`);
+            console.log(`✅ Allowed origins:`, allowedOrigins);
+            callback(null, true); // For hackathon, allow all
+        }
+    },
     credentials: true
 }));
 

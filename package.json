@@ -7,8 +7,7 @@
   "scripts": {
     "start": "tsx server.production.ts",
     "dev": "tsx watch server.ts",
-    "build": "echo 'No build needed - using tsx'",
-    "postinstall": "npm install -g @chainlink/cre-cli"
+    "build": "echo 'No build needed - using tsx'"
   },
   "keywords": [
     "chainlink",

@@ -16,9 +16,8 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-app.use(cors({
-    origin: [FRONTEND_URL, 'http://localhost:5173']
-}));
+// Allow all origins for the hackathon to prevent Vercel trailing slash or sub-domain CORS issues
+app.use(cors());
 app.use(express.json());
 
 // Path to cre-orchestrator .env file

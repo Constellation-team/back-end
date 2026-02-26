@@ -153,9 +153,9 @@ app.post('/api/simulate', async (req, res) => {
         const workflowsPath = path.join(ORCHESTRATOR_PATH, 'workflows');
         console.log(`🔍 Workflows path: ${workflowsPath}`);
         
-        // Command: Use npx to run CRE CLI (works without global install)
-        // This works in both development and production
-        const command = `cd "${ORCHESTRATOR_PATH}" && npx -y @chainlink/cre-cli workflow simulate workflows --target=staging-settings`;
+        // Command: Use bun to run CRE (already installed in cre-orchestrator via bun install)
+        // The cre command is available via @chainlink/cre-sdk installed in the project
+        const command = `cd "${ORCHESTRATOR_PATH}" && bun x cre workflow simulate workflows --target=staging-settings`;
         const isWindows = process.platform === 'win32';
         
         console.log(`🚀 Executing: ${command}`);

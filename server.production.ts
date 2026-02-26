@@ -56,9 +56,9 @@ app.get('/api/info', (req, res) => {
         name: 'CREator Backend API',
         version: '1.0.0',
         environment: NODE_ENV,
-        availableEndpoints: NODE_ENV === 'production'
-            ? ['/health', '/api/info']
-            : ['/health', '/api/info', '/api/write-file', '/api/simulate', '/api/get-env-config', '/api/set-env-config']
+        orchestratorPath: ORCHESTRATOR_PATH,
+        availableEndpoints: ['/health', '/api/info', '/api/write-file', '/api/simulate', '/api/get-env-config', '/api/set-env-config'],
+        availableRoutes: ['/health', '/api/info', '/api/write-file', '/api/simulate', '/api/get-env-config', '/api/set-env-config']
     });
 });
 
@@ -80,6 +80,42 @@ const execAsync = promisify(exec);
 const ORCHESTRATOR_PATH = process.env.ORCHESTRATOR_PATH || path.join(__dirname, '..', 'cre-orchestrator');
 const CRE_ENV_PATH = path.join(ORCHESTRATOR_PATH, '.env');
 
+// Initialize .env file if it doesn't exist (for production)
+async function initializeEnvFile() {
+    try {
+        await fs.access(CRE_ENV_PATH);
+        console.log('✓ .env file found in orchestrator');
+    } catch {
+        console.log('⚠️ .env file not found, creating with default values...');
+        try {
+            // Create .env with values from environment variables or defaults
+            // Private key is optional - CRE can run simulations without it for basic workflows
+            const privateKey = process.env.CRE_ETH_PRIVATE_KEY || '';
+            const target = process.env.CRE_TARGET || 'staging-settings';
+            
+            const envContent = `# CRE Configuration
+# Generated automatically by CREator Backend
+# Private key is optional - some simulations work without it
+CRE_ETH_PRIVATE_KEY=${privateKey}
+CRE_TARGET=${target}
+`;
+            await fs.writeFile(CRE_ENV_PATH, envContent, 'utf-8');
+            console.log('✓ .env file created');
+            
+            if (!privateKey) {
+                console.log('ℹ️ Note: CRE_ETH_PRIVATE_KEY not set - some workflows may require it');
+                console.log('   Users can configure their key via Settings in the frontend');
+                console.log('   Many simulations work without a key!');
+            }
+        } catch (error) {
+            console.error('❌ Failed to create .env file:', error);
+        }
+    }
+}
+
+// Initialize on startup
+initializeEnvFile();
+
 // Write file endpoint
 app.post('/api/write-file', async (req, res) => {
     try {
@@ -89,11 +125,13 @@ app.post('/api/write-file', async (req, res) => {
             return res.status(400).json({ error: 'Missing path or content' });
         }
 
+        // Always use ORCHESTRATOR_PATH from environment or default
         const filePath = path.join(ORCHESTRATOR_PATH, relativePath);
         const dir = path.dirname(filePath);
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(filePath, content, 'utf-8');
 
+        console.log(`✓ File written: ${filePath}`);
         res.json({ success: true, message: `File written: ${filePath}` });
     } catch (error) {
         console.error('Error writing file:', error);
@@ -107,13 +145,16 @@ app.post('/api/write-file', async (req, res) => {
 // Simulate workflow endpoint
 app.post('/api/simulate', async (req, res) => {
     try {
-        const { orchestratorPath } = req.body;
-
-        if (!orchestratorPath) {
-            return res.status(400).json({ error: 'Missing orchestratorPath' });
-        }
-
-        const command = `cd "${orchestratorPath}" && cre workflow simulate workflows --target=staging-settings`;
+        // Always use ORCHESTRATOR_PATH from environment or default
+        // Ignore the orchestratorPath from request body
+        console.log(`📍 Using orchestrator path: ${ORCHESTRATOR_PATH}`);
+        
+        // Use the full path to workflows directory
+        const workflowsPath = path.join(ORCHESTRATOR_PATH, 'workflows');
+        console.log(`🔍 Workflows path: ${workflowsPath}`);
+        
+        // Command: run from orchestrator directory
+        const command = `cd "${ORCHESTRATOR_PATH}" && cre workflow simulate workflows --target=staging-settings`;
         const isWindows = process.platform === 'win32';
 
         const { stdout, stderr } = await execAsync(command, {
@@ -145,17 +186,26 @@ app.post('/api/simulate', async (req, res) => {
 app.get('/api/get-env-config', async (req, res) => {
     try {
         const envContent = await fs.readFile(CRE_ENV_PATH, 'utf-8');
-        const hasPrivateKey = envContent.includes('CRE_ETH_PRIVATE_KEY=') &&
-            !envContent.includes('CRE_ETH_PRIVATE_KEY=your_');
+        
+        // Check if private key exists and is not empty/placeholder
+        const keyMatch = envContent.match(/CRE_ETH_PRIVATE_KEY=(.+)/);
+        const hasValidKey = keyMatch && 
+            keyMatch[1].trim() !== '' && 
+            !keyMatch[1].includes('your_') &&
+            !keyMatch[1].includes('placeholder');
 
         res.json({
-            configured: hasPrivateKey,
+            configured: !!hasValidKey,
+            hasPrivateKey: !!hasValidKey,
             path: CRE_ENV_PATH,
+            note: hasValidKey ? undefined : 'No private key configured. Some workflows may work without it.'
         });
     } catch (error) {
         res.json({
             configured: false,
+            hasPrivateKey: false,
             error: 'Could not read .env file',
+            note: 'Configure via Settings if needed for your workflow'
         });
     }
 });
@@ -225,6 +275,7 @@ app.listen(PORT, () => {
     console.log(`📍 Server: http://localhost:${PORT}`);
     console.log(`🌍 Environment: ${NODE_ENV}`);
     console.log(`🎯 CORS Origin: ${FRONTEND_URL}`);
+    console.log(`📁 Orchestrator: ${ORCHESTRATOR_PATH}`);
     console.log(`⏰ Started: ${new Date().toISOString()}`);
     console.log(`${'='.repeat(60)}\n`);
 });

@@ -9,8 +9,8 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // CORS configuration
 app.use(cors({
-    origin: NODE_ENV === 'production' 
-        ? [FRONTEND_URL] 
+    origin: NODE_ENV === 'production'
+        ? [FRONTEND_URL]
         : [FRONTEND_URL, 'http://localhost:5173', 'http://localhost:5174'],
     credentials: true
 }));
@@ -22,8 +22,8 @@ app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
         environment: NODE_ENV,
-        message: NODE_ENV === 'production' 
-            ? 'Backend is running. File operations disabled in production.' 
+        message: NODE_ENV === 'production'
+            ? 'Backend is running. File operations disabled in production.'
             : 'Backend is running in development mode.',
         timestamp: new Date().toISOString()
     });
@@ -42,170 +42,139 @@ app.get('/api/info', (req, res) => {
 });
 
 // ============================================================================
-// PRODUCTION MODE: Disabled endpoints
+// HACKATHON MODE: Full functionality enabled in all environments
 // ============================================================================
-if (NODE_ENV === 'production') {
-    const productionDisabledMessage = {
-        error: 'Not available in production',
-        message: 'This feature requires local filesystem access. Use "Export Flow" to download your project and test locally with CRE CLI.',
-        documentation: 'https://docs.chain.link/cre'
-    };
+// Import server with full functionality
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-    app.post('/api/write-file', (req, res) => {
-        res.status(501).json(productionDisabledMessage);
-    });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const execAsync = promisify(exec);
 
-    app.post('/api/simulate', (req, res) => {
-        res.status(501).json(productionDisabledMessage);
-    });
+const ORCHESTRATOR_PATH = process.env.ORCHESTRATOR_PATH || path.join(__dirname, '..', 'cre-orchestrator');
+const CRE_ENV_PATH = path.join(ORCHESTRATOR_PATH, '.env');
 
-    app.get('/api/get-env-config', (req, res) => {
-        res.status(501).json(productionDisabledMessage);
-    });
+// Write file endpoint
+app.post('/api/write-file', async (req, res) => {
+    try {
+        const { path: relativePath, content } = req.body;
 
-    app.post('/api/set-env-config', (req, res) => {
-        res.status(501).json(productionDisabledMessage);
-    });
+        if (!relativePath || content === undefined) {
+            return res.status(400).json({ error: 'Missing path or content' });
+        }
 
-    console.log('🚀 CREator Backend running in PRODUCTION mode');
-    console.log('⚠️  File operations are DISABLED');
-    console.log('✅ Frontend should use "Export Flow" for project generation');
-}
+        const filePath = path.join(ORCHESTRATOR_PATH, relativePath);
+        const dir = path.dirname(filePath);
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(filePath, content, 'utf-8');
 
-// ============================================================================
-// DEVELOPMENT MODE: Full functionality
-// ============================================================================
-if (NODE_ENV === 'development') {
-    // Import development server with full functionality
-    const { exec } = await import('child_process');
-    const { promisify } = await import('util');
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const { fileURLToPath } = await import('url');
-    const { dirname } = await import('path');
+        res.json({ success: true, message: `File written: ${filePath}` });
+    } catch (error) {
+        console.error('Error writing file:', error);
+        res.status(500).json({
+            error: 'Failed to write file',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
 
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const execAsync = promisify(exec);
+// Simulate workflow endpoint
+app.post('/api/simulate', async (req, res) => {
+    try {
+        const { orchestratorPath } = req.body;
 
-    const ORCHESTRATOR_PATH = process.env.ORCHESTRATOR_PATH || path.join(__dirname, '..', 'cre-orchestrator');
-    const CRE_ENV_PATH = path.join(ORCHESTRATOR_PATH, '.env');
+        if (!orchestratorPath) {
+            return res.status(400).json({ error: 'Missing orchestratorPath' });
+        }
 
-    // Write file endpoint
-    app.post('/api/write-file', async (req, res) => {
-        try {
-            const { path: filePath, content } = req.body;
+        const command = `cd "${orchestratorPath}" && cre workflow simulate workflows --target=staging-settings`;
+        const isWindows = process.platform === 'win32';
 
-            if (!filePath || content === undefined) {
-                return res.status(400).json({ error: 'Missing path or content' });
-            }
+        const { stdout, stderr } = await execAsync(command, {
+            shell: isWindows ? 'powershell.exe' : '/bin/sh',
+            maxBuffer: 1024 * 1024 * 10,
+            timeout: 60000,
+        });
 
-            const dir = path.dirname(filePath);
-            await fs.mkdir(dir, { recursive: true });
-            await fs.writeFile(filePath, content, 'utf-8');
+        const output = stdout + (stderr ? '\n' + stderr : '');
 
-            res.json({ success: true, message: `File written: ${filePath}` });
-        } catch (error) {
-            console.error('Error writing file:', error);
-            res.status(500).json({
-                error: 'Failed to write file',
-                message: error instanceof Error ? error.message : 'Unknown error'
+        res.json({
+            success: true,
+            output: output,
+        });
+    } catch (error) {
+        console.error('Error running simulation:', error);
+
+        const execError = error as { stdout?: string; stderr?: string; message?: string };
+        const output = (execError.stdout || '') + '\n' + (execError.stderr || '') + '\n' + (execError.message || '');
+
+        res.json({
+            success: false,
+            output: output,
+        });
+    }
+});
+
+// Get environment configuration status
+app.get('/api/get-env-config', async (req, res) => {
+    try {
+        const envContent = await fs.readFile(CRE_ENV_PATH, 'utf-8');
+        const hasPrivateKey = envContent.includes('CRE_ETH_PRIVATE_KEY=') &&
+            !envContent.includes('CRE_ETH_PRIVATE_KEY=your_');
+
+        res.json({
+            configured: hasPrivateKey,
+            path: CRE_ENV_PATH,
+        });
+    } catch (error) {
+        res.json({
+            configured: false,
+            error: 'Could not read .env file',
+        });
+    }
+});
+
+// Set environment configuration
+app.post('/api/set-env-config', async (req, res) => {
+    try {
+        const { privateKey } = req.body;
+
+        if (!privateKey) {
+            return res.status(400).json({ error: 'Missing privateKey' });
+        }
+
+        const cleanKey = privateKey.replace(/^0x/, '').trim();
+
+        if (!/^[a-fA-F0-9]{64}$/.test(cleanKey)) {
+            return res.status(400).json({
+                error: 'Invalid private key format. Must be 64 hexadecimal characters.'
             });
         }
-    });
 
-    // Simulate workflow endpoint
-    app.post('/api/simulate', async (req, res) => {
-        try {
-            const { orchestratorPath } = req.body;
+        const envContent = `CRE_ETH_PRIVATE_KEY=${cleanKey}\nCRE_TARGET=staging-settings\n`;
+        await fs.writeFile(CRE_ENV_PATH, envContent, 'utf-8');
 
-            if (!orchestratorPath) {
-                return res.status(400).json({ error: 'Missing orchestratorPath' });
-            }
+        res.json({
+            success: true,
+            message: 'Private key configured successfully'
+        });
+    } catch (error) {
+        console.error('Error setting env config:', error);
+        res.status(500).json({
+            error: 'Failed to save configuration',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
 
-            const command = `cd "${orchestratorPath}"; cre workflow simulate workflows --target=staging-settings`;
-
-            const { stdout, stderr } = await execAsync(command, {
-                shell: 'powershell.exe',
-                maxBuffer: 1024 * 1024 * 10,
-                timeout: 60000,
-            });
-
-            const output = stdout + (stderr ? '\n' + stderr : '');
-
-            res.json({
-                success: true,
-                output: output,
-            });
-        } catch (error) {
-            console.error('Error running simulation:', error);
-
-            const execError = error as { stdout?: string; stderr?: string; message?: string };
-            const output = (execError.stdout || '') + '\n' + (execError.stderr || '') + '\n' + (execError.message || '');
-
-            res.json({
-                success: false,
-                output: output,
-            });
-        }
-    });
-
-    // Get environment configuration status
-    app.get('/api/get-env-config', async (req, res) => {
-        try {
-            const envContent = await fs.readFile(CRE_ENV_PATH, 'utf-8');
-            const hasPrivateKey = envContent.includes('CRE_ETH_PRIVATE_KEY=') && 
-                                  !envContent.includes('CRE_ETH_PRIVATE_KEY=your_');
-
-            res.json({
-                configured: hasPrivateKey,
-                path: CRE_ENV_PATH,
-            });
-        } catch (error) {
-            res.json({
-                configured: false,
-                error: 'Could not read .env file',
-            });
-        }
-    });
-
-    // Set environment configuration
-    app.post('/api/set-env-config', async (req, res) => {
-        try {
-            const { privateKey } = req.body;
-
-            if (!privateKey) {
-                return res.status(400).json({ error: 'Missing privateKey' });
-            }
-
-            const cleanKey = privateKey.replace(/^0x/, '').trim();
-
-            if (!/^[a-fA-F0-9]{64}$/.test(cleanKey)) {
-                return res.status(400).json({ 
-                    error: 'Invalid private key format. Must be 64 hexadecimal characters.' 
-                });
-            }
-
-            const envContent = `CRE_ETH_PRIVATE_KEY=${cleanKey}\nCRE_TARGET=staging-settings\n`;
-            await fs.writeFile(CRE_ENV_PATH, envContent, 'utf-8');
-
-            res.json({ 
-                success: true, 
-                message: 'Private key configured successfully' 
-            });
-        } catch (error) {
-            console.error('Error setting env config:', error);
-            res.status(500).json({
-                error: 'Failed to save configuration',
-                message: error instanceof Error ? error.message : 'Unknown error'
-            });
-        }
-    });
-
-    console.log('🧪 CREator Backend running in DEVELOPMENT mode');
-    console.log('✅ All file operations are ENABLED');
-    console.log(`📁 Orchestrator path: ${ORCHESTRATOR_PATH}`);
-}
+console.log('🧪 CREator Backend running in HACKATHON mode');
+console.log('✅ All file operations are ENABLED');
+console.log(`📁 Orchestrator path: ${ORCHESTRATOR_PATH}`);
 
 // 404 handler
 app.use((req, res) => {

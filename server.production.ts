@@ -77,7 +77,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const execAsync = promisify(exec);
 
-const ORCHESTRATOR_PATH = process.env.ORCHESTRATOR_PATH || path.join(__dirname, '..', 'cre-orchestrator');
+// Docker uses /cre-orchestrator, Render uses ../cre-orchestrator
+const ORCHESTRATOR_PATH = process.env.ORCHESTRATOR_PATH || '/cre-orchestrator';
 const CRE_ENV_PATH = path.join(ORCHESTRATOR_PATH, '.env');
 
 // Initialize .env file if it doesn't exist (for production)

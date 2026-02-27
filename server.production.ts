@@ -182,12 +182,50 @@ app.post('/api/simulate', async (req, res) => {
         console.error('Error running simulation:', error);
 
         const execError = error as { stdout?: string; stderr?: string; message?: string };
-        const output = (execError.stdout || '') + '\n' + (execError.stderr || '') + '\n' + (execError.message || '');
+        const errorOutput = (execError.stdout || '') + '\n' + (execError.stderr || '') + '\n' + (execError.message || '');
 
-        res.json({
-            success: false,
-            output: output,
-        });
+        // Check if the error is due to authentication (cre login required)
+        if (errorOutput.includes('not logged in') || errorOutput.includes('authentication required') || errorOutput.includes('run cre login')) {
+            const message = `
+⚠️ CRE CLI Authentication Required
+
+The Chainlink CRE CLI requires authentication via 'cre login' before running simulations.
+This is a limitation of running CRE in a hosted environment.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 SOLUTION: Use "Export Flow" Instead
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Click the "💾 Export Flow" button above
+2. Download the complete CRE project (ZIP file)
+3. Extract and follow the QUICKSTART.md guide
+4. Run 'cre login' once on your local machine
+5. Test your workflow with full CRE CLI capabilities
+
+This approach gives you:
+✅ Full CRE CLI functionality
+✅ Real testnet/mainnet testing
+✅ Complete control over your private keys
+✅ Professional deployment workflow
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The visual workflow builder and Export functionality work perfectly!
+This is the recommended approach for production use. 🚀
+`;
+            
+            res.json({
+                success: false,
+                output: message,
+                authError: true
+            });
+        } else {
+            // Other errors - return as-is
+            res.json({
+                success: false,
+                output: errorOutput,
+            });
+        }
     }
 });
 

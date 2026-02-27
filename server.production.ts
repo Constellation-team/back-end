@@ -153,9 +153,14 @@ app.post('/api/simulate', async (req, res) => {
         const workflowsPath = path.join(ORCHESTRATOR_PATH, 'workflows');
         console.log(`🔍 Workflows path: ${workflowsPath}`);
         
-        // Command: Use bun to run CRE (already installed in cre-orchestrator via bun install)
-        // The cre command is available via @chainlink/cre-sdk installed in the project
-        const command = `cd "${ORCHESTRATOR_PATH}" && bun x cre workflow simulate workflows --target=staging-settings`;
+        // Command: Use CRE CLI installed from https://cre.chain.link/install.sh
+        // The CLI gets installed to $HOME/.cre/bin/cre in Render
+        // We try multiple possible locations
+        const creCommand = process.env.HOME 
+            ? `${process.env.HOME}/.cre/bin/cre` 
+            : 'cre'; // fallback to global cre if HOME not set
+            
+        const command = `cd "${ORCHESTRATOR_PATH}" && ${creCommand} workflow simulate workflows --target=staging-settings`;
         const isWindows = process.platform === 'win32';
         
         console.log(`🚀 Executing: ${command}`);

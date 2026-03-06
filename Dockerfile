@@ -18,25 +18,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install npm dependencies
+# Install npm dependencies (includes solc for compilation)
 RUN npm install
-
-# Install CRE CLI
-RUN bash -c "curl -fsSL https://cre.chain.link/install.sh | bash"
-ENV PATH="/root/.cre/bin:${PATH}"
-
-# Clone cre-orchestrator repository
-RUN git clone https://github.com/Constellation-team/cre-orchestrator.git /cre-orchestrator
-
-# Install Bun globally
-RUN npm install -g bun
-
-# Install workflow dependencies
-WORKDIR /cre-orchestrator/workflows
-RUN bun install
-
-# Return to app directory
-WORKDIR /app
 
 # Copy application code
 COPY . .

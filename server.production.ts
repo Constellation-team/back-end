@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import solc from 'solc';
 import 'dotenv/config';
 
 const app = express();
@@ -294,14 +295,78 @@ console.log('🧪 CREator Backend running in HACKATHON mode');
 console.log('✅ All file operations are ENABLED');
 console.log(`📁 Orchestrator path: ${ORCHESTRATOR_PATH}`);
 
+// Compile Solidity contract endpoint
+app.post('/api/compile', async (req, res) => {
+    try {
+        const { sourceCode } = req.body;
+
+        if (!sourceCode || typeof sourceCode !== 'string') {
+            return res.status(400).json({ error: 'Missing or invalid sourceCode' });
+        }
+
+        // Create compiler input
+        const input = {
+            language: 'Solidity',
+            sources: {
+                'Contract.sol': { content: sourceCode }
+            },
+            settings: {
+                outputSelection: {
+                    '*': {
+                        '*': ['abi', 'evm.bytecode.object']
+                    }
+                },
+                optimizer: {
+                    enabled: true,
+                    runs: 200
+                }
+            }
+        };
+
+        // Compile
+        const output = JSON.parse(solc.compile(JSON.stringify(input)));
+
+        // Check for errors
+        if (output.errors) {
+            const hasError = output.errors.some((err: any) => err.severity === 'error');
+            if (hasError) {
+                return res.json({
+                    success: false,
+                    errors: output.errors
+                });
+            }
+        }
+
+        // Extract result
+        const contractFile = output.contracts['Contract.sol'];
+        const contractName = Object.keys(contractFile)[0];
+        const contract = contractFile[contractName];
+
+        res.json({
+            success: true,
+            result: {
+                abi: contract.abi,
+                bytecode: '0x' + contract.evm.bytecode.object
+            }
+        });
+
+    } catch (error) {
+        console.error('Compilation error:', error);
+        res.status(500).json({
+            error: 'Compilation failed',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
 // 404 handler
 app.use((req, res) => {
     res.status(404).json({
         error: 'Not found',
         message: `Route ${req.method} ${req.path} does not exist`,
         availableRoutes: NODE_ENV === 'production'
-            ? ['/health', '/api/info']
-            : ['/health', '/api/info', '/api/write-file', '/api/simulate', '/api/get-env-config', '/api/set-env-config']
+            ? ['/health', '/api/info', '/api/compile']
+            : ['/health', '/api/info', '/api/write-file', '/api/simulate', '/api/get-env-config', '/api/set-env-config', '/api/compile']
     });
 });
 

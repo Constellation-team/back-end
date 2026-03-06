@@ -6,6 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import solc from 'solc';
 import 'dotenv/config';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -156,6 +157,70 @@ app.post('/api/set-env-config', async (req, res) => {
         console.error('Error updating .env config:', error);
         res.status(500).json({
             error: 'Failed to save configuration',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+
+// Compile Solidity contract endpoint
+app.post('/api/compile', async (req, res) => {
+    try {
+        const { sourceCode } = req.body;
+
+        if (!sourceCode || typeof sourceCode !== 'string') {
+            return res.status(400).json({ error: 'Missing or invalid sourceCode' });
+        }
+
+        // Create compiler input
+        const input = {
+            language: 'Solidity',
+            sources: {
+                'Contract.sol': { content: sourceCode }
+            },
+            settings: {
+                outputSelection: {
+                    '*': {
+                        '*': ['abi', 'evm.bytecode.object']
+                    }
+                },
+                optimizer: {
+                    enabled: true,
+                    runs: 200
+                }
+            }
+        };
+
+        // Compile
+        const output = JSON.parse(solc.compile(JSON.stringify(input)));
+
+        // Check for errors
+        if (output.errors) {
+            const hasError = output.errors.some((err: any) => err.severity === 'error');
+            if (hasError) {
+                return res.json({
+                    success: false,
+                    errors: output.errors
+                });
+            }
+        }
+
+        // Extract result
+        const contractFile = output.contracts['Contract.sol'];
+        const contractName = Object.keys(contractFile)[0];
+        const contract = contractFile[contractName];
+
+        res.json({
+            success: true,
+            result: {
+                abi: contract.abi,
+                bytecode: '0x' + contract.evm.bytecode.object
+            }
+        });
+
+    } catch (error) {
+        console.error('Compilation error:', error);
+        res.status(500).json({
+            error: 'Compilation failed',
             message: error instanceof Error ? error.message : 'Unknown error'
         });
     }

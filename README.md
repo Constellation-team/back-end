@@ -1,6 +1,6 @@
 ﻿# CREator Backend
 
-> **Hackathon judges:** See [JUDGES.md](../JUDGES.md) for the complete local setup and evaluation guide.
+> **Hackathon judges:** See [JUDGES.md](../front-end/documentation/JUDGES.md) for the complete local setup and evaluation guide.
 
 Express API server for the CREator visual workflow builder. Handles Solidity compilation, CRE workflow simulation, file operations, and environment configuration.
 
@@ -23,7 +23,7 @@ npm install
 npm run dev
 ```
 
-Starts the server with hot-reload via 	sx watch. Connects to cre-orchestrator/ in the parent directory.
+Starts the server with hot-reload via tsx watch. Connects to cre-orchestrator/ in the parent directory.
 
 ### Production
 
@@ -31,7 +31,7 @@ Starts the server with hot-reload via 	sx watch. Connects to cre-orchestrator/ i
 npm start
 ```
 
-Runs server.production.ts directly with 	sx. The default port is 3001 unless overridden by the PORT environment variable.
+Runs server.production.ts directly with tsx. The default port is 3001 unless overridden by the PORT environment variable.
 
 ## Endpoints
 
@@ -82,8 +82,7 @@ Response:
 
 ### POST /api/simulate
 
-Simulates the workflow defined in cre-orchestrator/workflows/main.ts without requiring the CRE CLI or authentication. The server reads main.ts, parses all 
-untime.log() calls (including expressions using variables and JSON.stringify), detects the trigger type from SDK imports, and returns output formatted to match the real CRE CLI simulation output.
+Simulates the workflow defined in cre-orchestrator/workflows/main.ts without requiring the CRE CLI or authentication. The server reads main.ts, parses all runtime.log() calls (including expressions using variables and JSON.stringify), detects the trigger type from SDK imports, and returns output formatted to match the real CRE CLI simulation output.
 
 Request body is ignored; the orchestrator path is always taken from the server configuration.
 

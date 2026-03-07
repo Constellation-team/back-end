@@ -1,13 +1,13 @@
-# CREator Backend
+﻿# CREator Backend
 
-Backend API server for CREator that handles Solidity compilation, file operations, and CRE workflow simulations.
+> **Hackathon judges:** See [JUDGES.md](../JUDGES.md) for the complete local setup and evaluation guide.
 
-## Features
+Express API server for the CREator visual workflow builder. Handles Solidity compilation, CRE workflow simulation, file operations, and environment configuration.
 
-- 🔨 **Solidity Compilation**: Compile smart contracts using solc compiler
-- 📝 **File Operations**: Write generated workflow files to cre-orchestrator directory
-- 🎯 **CRE Simulations**: Execute `cre workflow simulate workflows` command (development only)
-- ⚡ **Real-time Output**: Return compilation and simulation outputs to frontend
+## Requirements
+
+- Node.js 22+
+- npm
 
 ## Installation
 
@@ -18,132 +18,124 @@ npm install
 ## Running
 
 ### Development
+
 ```bash
 npm run dev
 ```
 
+Starts the server with hot-reload via 	sx watch. Connects to cre-orchestrator/ in the parent directory.
+
 ### Production
+
 ```bash
 npm start
 ```
 
-The server will start on `http://localhost:3001` (development) or the PORT specified by environment variable (production).
+Runs server.production.ts directly with 	sx. The default port is 3001 unless overridden by the PORT environment variable.
 
 ## Endpoints
 
-### POST /api/compile
-Compiles Solidity source code and returns ABI and bytecode.
-
-**Request Body:**
-```json
-{
-  "sourceCode": "pragma solidity ^0.8.20; contract MyContract { ... }"
-}
-```
-
-**Response (Success):**
-```json
-{
-  "success": true,
-  "result": {
-    "abi": [...],
-    "bytecode": "0x6080604052..."
-  }
-}
-```
-
-**Response (Error):**
-```json
-{
-  "success": false,
-  "errors": [
-    {
-      "severity": "error",
-      "formattedMessage": "ParserError: Expected ';' but got '}'..."
-    }
-  ]
-}
-```
-
-### POST /api/write-file
-Writes a file to the specified path in the cre-orchestrator directory.
-
-**Request Body:**
-```json
-{
-  "path": "workflows/main.ts",
-  "content": "// Your workflow code here"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "File written: /path/to/cre-orchestrator/workflows/main.ts"
-}
-```
-
-### POST /api/simulate
-Runs CRE workflow simulation (development/local only).
-
-**Request Body:**
-```json
-{
-  "orchestratorPath": "DEFAULT"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "output": "Workflow compiled\n2026-02-16T22:28:05Z [SIMULATION] Simulator Initialized\n..."
-}
-```
-
 ### GET /health
-Health check endpoint.
 
-**Response:**
+Returns the server status.
+
 ```json
 {
   "status": "ok",
   "environment": "production",
-  "message": "Backend is running",
-  "timestamp": "2026-03-06T16:00:00.000Z"
+  "timestamp": "2026-03-07T18:00:00.000Z"
 }
+```
+
+### POST /api/compile
+
+Compiles Solidity source code using solc and returns the ABI and bytecode.
+
+Request:
+```json
+{ "sourceCode": "pragma solidity ^0.8.20; contract MyContract { ... }" }
+```
+
+Response (success):
+```json
+{ "success": true, "result": { "abi": [...], "bytecode": "0x..." } }
+```
+
+Response (error):
+```json
+{ "success": false, "errors": [{ "severity": "error", "formattedMessage": "..." }] }
+```
+
+### POST /api/write-file
+
+Writes a file into the cre-orchestrator directory. Path is relative to the orchestrator root.
+
+Request:
+```json
+{ "path": "workflows/main.ts", "content": "..." }
+```
+
+Response:
+```json
+{ "success": true, "message": "File written: /path/to/file" }
+```
+
+### POST /api/simulate
+
+Simulates the workflow defined in cre-orchestrator/workflows/main.ts without requiring the CRE CLI or authentication. The server reads main.ts, parses all 
+untime.log() calls (including expressions using variables and JSON.stringify), detects the trigger type from SDK imports, and returns output formatted to match the real CRE CLI simulation output.
+
+Request body is ignored; the orchestrator path is always taken from the server configuration.
+
+Response:
+```json
+{
+  "success": true,
+  "output": "cre workflow simulate workflows --target=staging-settings\n! Using default private key...\n..."
+}
+```
+
+### GET /api/get-env-config
+
+Reads the .env file in the cre-orchestrator directory and returns whether a valid private key is configured.
+
+Response:
+```json
+{ "configured": true, "hasPrivateKey": true }
+```
+
+### POST /api/set-env-config
+
+Writes a private key to the cre-orchestrator .env file.
+
+Request:
+```json
+{ "privateKey": "64-hex-char-key" }
 ```
 
 ## Environment Variables
 
-- `PORT`: Server port (default: 3001)
-- `FRONTEND_URL`: Frontend URL for CORS (default: http://localhost:5173)
-- `NODE_ENV`: Environment mode (development/production)
-- `ORCHESTRATOR_PATH`: Path to cre-orchestrator directory (default: ../cre-orchestrator)
+| Variable | Default | Description |
+|---|---|---|
+| PORT | 3001 | Server port |
+| FRONTEND_URL | http://localhost:5173 | Allowed CORS origin |
+| NODE_ENV | development | Environment mode |
+| ORCHESTRATOR_PATH | ../cre-orchestrator | Path to the orchestrator directory |
 
-## Docker Deployment
+In production (Render/Docker), ORCHESTRATOR_PATH is resolved relative to __dirname automatically. Do not set it to an absolute path unless deploying to a known filesystem layout.
 
-The Dockerfile is optimized for production deployment:
+## Docker
+
+The included Dockerfile uses Ubuntu 24.04 with Node.js 22 and installs all npm dependencies. No CRE CLI is required.
 
 ```bash
 docker build -t creator-backend .
-docker run -p 3001:3001 creator-backend
+docker run -p 10000:10000 -e PORT=10000 creator-backend
 ```
-
-**Note**: The production Docker image is lightweight and only includes Node.js and npm dependencies. CRE CLI installation has been removed to avoid GitHub connectivity issues during builds.
-
-## Development
-
-```bash
-npm run dev
-```
-
-This runs the server with hot-reload using tsx watch mode.
 
 ## Architecture
 
-- **Express.js**: Web framework
-- **solc**: Solidity compiler
-- **tsx**: TypeScript execution
-- **CORS**: Enabled for all origins (hackathon mode)
+- **Express 4** - HTTP server
+- **solc 0.8.34** - Solidity compiler (bundled, no external toolchain)
+- **tsx 4** - TypeScript execution without a separate build step
+- **Simulation engine** - Custom Node.js parser that reads main.ts and produces CRE-formatted output (no CRE CLI dependency)
